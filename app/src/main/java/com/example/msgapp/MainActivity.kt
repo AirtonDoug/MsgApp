@@ -1,14 +1,18 @@
-
-
 package com.example.msgapp
 
-
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.msgapp.ui.view.ChatScreen
 import com.example.msgapp.ui.view.RoomSelector
@@ -40,11 +44,9 @@ fun MsgAppTheme(content: @Composable () -> Unit) {
     )
 }
 
-
-
 @Composable
 fun MsgAppRoot(vm: MsgViewModel = viewModel()) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     // Login anônimo do Firebase
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
@@ -58,6 +60,33 @@ fun MsgAppRoot(vm: MsgViewModel = viewModel()) {
     var userName by remember { mutableStateOf("Usuário-${userId.takeLast(4)}") }
     var currentRoom by remember { mutableStateOf("geral") }
     var lastNotifiedId by remember { mutableStateOf<String?>(null) }
+
+    // Controle da permissão de notificação
+    var hasNotificationPermission by remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            mutableStateOf(
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            )
+        } else {
+            mutableStateOf(true)
+        }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            hasNotificationPermission = isGranted
+        }
+    )
+
+    // Solicita a permissão ao iniciar, se necessário
+    LaunchedEffect(key1 = true) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     LaunchedEffect(currentRoom) {
         vm.switchRoom(currentRoom)
@@ -73,11 +102,11 @@ fun MsgAppRoot(vm: MsgViewModel = viewModel()) {
             currentRoom = currentRoom,
             lastNotifiedId = lastNotifiedId,
             onNotify = { msg ->
-                notifyNewMessage(context, msg)
-                lastNotifiedId = msg.id
+                if (hasNotificationPermission) {
+                    notifyNewMessage(context, msg)
+                    lastNotifiedId = msg.id
+                }
             }
         )
     }
 }
-
-
